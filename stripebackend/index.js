@@ -24,6 +24,9 @@ app.post('/payment', (req, res) => {
   //unique key (this unique key keeps track that user is not charged twice)
   const idempotencyKey = uuid.v4();
 
+  //define the subscription plan
+  const plan = 'monthly';
+
   //fireup the stripe route ,helps to create customers
   return stripe.customers
     .create({
@@ -34,27 +37,47 @@ app.post('/payment', (req, res) => {
       //then create a charge
       //inside create we will be providing all the  object we are worried about,
       //in the 1st object we can extract as mush info as we like(some of them are compulsory and some of them are upto me) and 2nd obj contains idempontencykey
-      stripe.charge.create(
-        {
-          //this are compulsoty (1st three are compulsory)
-          amount: product.price * 100,
-          currency: 'usd',
-          customer: customer.id,
-          //in case you want to sned an email to the customer once he is charged then write this
-          receipt_email: token.email,
-          //we will use description and shipping (not mandatory)
-          description: `purchase of product.name`,
-          //this is sake of fun (take all the shipping info directly into the  stripe)
-          shipping: {
-            name: token.card.name, //the stripe interface will give you a card element, the card you can ask the user that hey that is your shipping address/biling address and you can grab information from there
-            address: {
-              //we weiil now only grab one info, but you can grab more on your own
-              country: token.card.address_country,
+      //--------1.  In this approach you charge the created customer
+
+      if (plan !== 'monthly') {
+        //create the charge on time
+        stripe.charge
+          .create(
+            {
+              //this are compulsoty (1st three are compulsory)
+              amount: product.price * 100,
+              currency: 'usd',
+              customer: customer.id,
+              //in case you want to sned an email to the customer once he is charged then write this
+              receipt_email: token.email,
+              //we will use description and shipping (not mandatory)
+              description: `purchase of product.name`,
+              //this is sake of fun (take all the shipping info directly into the  stripe)
+              shipping: {
+                name: token.card.name, //the stripe interface will give you a card element, the card you can ask the user that hey that is your shipping address/biling address and you can grab information from there
+                address: {
+                  //we weiil now only grab one info, but you can grab more on your own
+                  country: token.card.address_country,
+                },
+              },
             },
-          },
-        },
-        { idempotencyKey }
-      );
+            { idempotencyKey }
+          )
+          .then((charge) => {
+            console.log(`The one time charge object : ${charge}`);
+          });
+      } else {
+        stripe.subscriptions
+          .create({
+            customer: `${customer.id}`,
+            items: [{ plan: 'silver' }],
+          })
+          .then((subscription) => {
+            console.log(`Monthly Subscription Object: ${subscription}`);
+          });
+      }
+
+      //------2. Here the customer subscribe for monthly payment
     })
     .then((result) => res.status(200).json(result))
     .catch((error) => console.log(error));
